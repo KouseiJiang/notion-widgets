@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stark HUD Overdue Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* 正常状态：反应堆青 */
+            --hud-primary: #00f3ff;
+            --hud-glow: rgba(0, 243, 255, 0.5);
+            --hud-dim: rgba(0, 243, 255, 0.1);
+            
+            /* 超时状态：装甲受损红 */
+            --alert-primary: #ff3333;
+            --alert-glow: rgba(255, 51, 51, 0.6);
+            --alert-dim: rgba(255, 51, 51, 0.15);
+
+            --bg-dark: #020205; 
+            --box-bg: rgba(0, 10, 18, 0.9);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Rajdhani', sans-serif;
+            background-color: transparent;
+            overflow: hidden;
+            /* 平滑过渡颜色变化 */
+            transition: all 0.5s ease;
+        }
+
+        .hud-box {
+            width: 540px; /* 稍微加宽一点点以容纳负号 */
+            height: 140px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--box-bg);
+            border: 2px solid var(--hud-primary);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.15);
+            position: relative;
+            clip-path: polygon(
+                15px 0, 100% 0, 
+                100% calc(100% - 15px), calc(100% - 15px) 100%, 
+                0 100%, 0 15px
+            );
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+        }
+
+        .hud-box::after {
+            content: '';
+            position: absolute;
+            bottom: 5px;
+            width: 90%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--hud-primary), transparent);
+            opacity: 0.3;
+            transition: background 0.5s ease;
+        }
+
+        .title {
+            font-size: 1rem;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--hud-primary);
+            margin-bottom: 10px;
+            text-shadow: 0 0 5px var(--hud-glow);
+            width: 100%;
+            text-align: center;
+            background: linear-gradient(90deg, transparent, var(--hud-dim), transparent);
+            padding: 4px 0;
+            transition: color 0.5s ease, text-shadow 0.5s ease, background 0.5s ease;
+        }
+
+        .timer-wrapper {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            color: var(--hud-primary);
+            font-variant-numeric: tabular-nums; 
+            transition: color 0.5s ease;
+        }
+
+        .time-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 80px; 
+            position: relative;
+        }
+
+        /* 天数区域加宽 */
+        .day-group {
+            width: 120px; 
+        }
+
+        .time-num {
+            font-size: 3.5rem;
+            font-weight: 700;
+            line-height: 1;
+            text-shadow: 0 0 15px var(--hud-glow);
+            transition: text-shadow 0.5s ease;
+        }
+
+        .time-label {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            margin-top: 4px;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .separator {
+            font-size: 2.5rem;
+            line-height: 1;
+            color: var(--hud-primary);
+            opacity: 0.6;
+            margin-top: -15px;
+            width: 20px;
+            text-align: center;
+            transition: color 0.5s ease;
+        }
+
+        /* --- 逾期状态 (Overdue State) --- */
+        .hud-box.overdue {
+            border-color: var(--alert-primary);
+            box-shadow: 0 0 25px var(--alert-dim);
+        }
+        
+        .hud-box.overdue .title {
+            color: var(--alert-primary);
+            text-shadow: 0 0 8px var(--alert-glow);
+            background: linear-gradient(90deg, transparent, var(--alert-dim), transparent);
+        }
+        
+        .hud-box.overdue .timer-wrapper,
+        .hud-box.overdue .separator {
+            color: var(--alert-primary);
+        }
+
+        .hud-box.overdue .time-num {
+            text-shadow: 0 0 15px var(--alert-glow);
+        }
+
+        .hud-box.overdue::after {
+            background: linear-gradient(90deg, transparent, var(--alert-primary), transparent);
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 580px) {
+            .hud-box { width: 95%; height: auto; padding: 20px 0; }
+            .time-num { font-size: 2.2rem; }
+            .time-group { width: 60px; }
+            .day-group { width: 90px; } 
+            .separator { font-size: 1.5rem; margin-top: -10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud-box" id="hud-container">
+        <div class="title" id="title">MISSION TIMER</div>
+        <div class="timer-wrapper" id="timer">
+            <div class="time-group day-group"><span class="time-num" id="d-val">000</span><span class="time-label">DAYS</span></div>
+            <div class="separator">:</div>
+            <div class="time-group"><span class="time-num" id="h-val">00</span><span class="time-label">HRS</span></div>
+            <div class="separator">:</div>
+            <div class="time-group"><span class="time-num" id="m-val">00</span><span class="time-label">MIN</span></div>
+            <div class="separator">:</div>
+            <div class="time-group"><span class="time-num" id="s-val">00</span><span class="time-label">SEC</span></div>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        // 默认时间
+        const targetDateStr = params.get('date') || new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(); 
+        let titleText = params.get('title') || "DEADLINE TRACKER";
+
+        document.getElementById('title').innerText = titleText;
+
+        const targetDate = new Date(targetDateStr).getTime();
+        const hudContainer = document.getElementById('hud-container');
+        
+        // 获取显示元素
+        const dEl = document.getElementById('d-val');
+        const hEl = document.getElementById('h-val');
+        const mEl = document.getElementById('m-val');
+        const sEl = document.getElementById('s-val');
+        const titleEl = document.getElementById('title');
+
+        const format = (num) => num < 10 ? `0${num}` : num;
+        
+        // 天数格式化：如果是正数，正常显示；如果是逾期，手动添加负号
+        const formatDays = (num, isOverdue) => {
+            let s = num < 10 ? `0${num}` : num;
+            return isOverdue ? `-${s}` : s;
+        };
+
+        function updateTimer() {
+            const now = new Date().getTime();
+            let distance = targetDate - now;
+            let isOverdue = false;
+
+            // 核心逻辑修改：如果 distance < 0，标记为逾期，并取绝对值继续计算
+            if (distance < 0) {
+                isOverdue = true;
+                distance = Math.abs(distance);
+                
+                // 首次切换到逾期状态时添加 CSS 类
+                if (!hudContainer.classList.contains('overdue')) {
+                    hudContainer.classList.add('overdue');
+                    // 可选：修改标题提醒
+                    // titleEl.innerText = titleText + " [OVERDUE]";
+                }
+            } else {
+                // 如果有人把时间往回拨了，或者重置了日期
+                if (hudContainer.classList.contains('overdue')) {
+                    hudContainer.classList.remove('overdue');
+                    titleEl.innerText = titleText;
+                }
+            }
+
+            const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            // 更新 DOM
+            dEl.innerText = formatDays(days, isOverdue);
+            hEl.innerText = format(hours);
+            mEl.innerText = format(minutes);
+            sEl.innerText = format(seconds);
+        }
+
+        const interval = setInterval(updateTimer, 1000);
+        updateTimer(); 
+    </script>
+</body>
+</html>
